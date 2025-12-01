@@ -1,4 +1,4 @@
-# Yahtzee OOP Refactor
+# CLI-supported Yahtzee
 
 ## Project Overview
 
