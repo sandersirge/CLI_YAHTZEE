@@ -50,4 +50,15 @@ public class FullHouse extends Combination {
         
         return hasThree && hasTwo;
     }
+
+    /**
+     * Under the Joker rule a Yahtzee scores the full 25 points here.
+     *
+     * @param values the dice values
+     * @return 25
+     */
+    @Override
+    public int jokerPoints(List<Integer> values) {
+        return 25;
+    }
 }

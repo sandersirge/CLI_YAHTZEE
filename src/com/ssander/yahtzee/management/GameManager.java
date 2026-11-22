@@ -4,133 +4,145 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.random.RandomGenerator;
 
 import com.ssander.yahtzee.combos.Combination;
 import com.ssander.yahtzee.player.Die;
 import com.ssander.yahtzee.player.Player;
 import com.ssander.yahtzee.ui.GameUI;
+import com.ssander.yahtzee.ui.InputClosedException;
 
 /**
  * Manages the overall flow of a Yahtzee game.
  * Coordinates player turns, dice rolling, scoring, and game completion.
  */
 public class GameManager {
-    private final List<Player> players;
-    private final List<Die> dice;
-    private final CombinationRegistry registry;
+    /** Most players one game supports. */
+    public static final int MAX_PLAYERS = 6;
+    /** Dice in play. */
+    public static final int DICE_COUNT = 5;
+    /** Rolls per turn (the first roll plus two rerolls). */
+    public static final int ROLLS_PER_TURN = 3;
+
+    private final List<Player> players = new ArrayList<>();
+    private final List<Die> dice = new ArrayList<>(DICE_COUNT);
+    private final CombinationRegistry registry = new CombinationRegistry();
     private final GameUI ui;
+    private ScoringService scoring;
+
+    /** Set while a game is running; the shutdown hook only reports an abort then. */
+    private volatile boolean inProgress;
 
     /**
-     * Constructs a new game manager.
-     * Initializes empty player list, creates 5 dice, combination registry, and user interface.
+     * Creates a game manager with fair, unpredictable dice.
      *
      * @param ui user interface implementation to interact with players
      */
     public GameManager(GameUI ui) {
-        this.players = new ArrayList<>();
-        this.dice = new ArrayList<>(5);
-        this.registry = new CombinationRegistry();
+        this(ui, ThreadLocalRandom.current());
+    }
+
+    /**
+     * Creates a game manager whose dice use the given random source
+     * (a seeded generator makes a game repeatable, e.g. for testing).
+     *
+     * @param ui user interface implementation
+     * @param random random source for the dice
+     */
+    public GameManager(GameUI ui, RandomGenerator random) {
         this.ui = Objects.requireNonNull(ui, "Game UI must not be null");
-
-        for (int i = 0; i < 5; i++) {
-            dice.add(new Die());
+        for (int i = 0; i < DICE_COUNT; i++) {
+            dice.add(new Die(random));
         }
-
-        // Add shutdown hook for Ctrl+C
-        Runtime.getRuntime().addShutdownHook(new Thread(() ->
-            System.out.println("\n\nGame aborted. Closing now...")
-        ));
+        // Only an interrupted game (e.g. Ctrl+C) prints this, not a normal finish.
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            if (inProgress) {
+                System.out.println("\n\nGame aborted. Closing now...");
+            }
+        }));
     }
 
     /**
      * Starts and manages the complete game flow.
-     * Sets up players, runs all game rounds, displays results, and cleans up resources.
+     * Sets up players, runs all rounds, displays results, and cleans up resources.
+     * If the input ends part-way, the game closes cleanly instead of crashing.
      */
     public void startGame() {
-        int playerCount = ui.askPlayerCount();
-
-        for (int i = 0; i < playerCount; i++) {
-            String name = ui.askPlayerName(i + 1);
-            players.add(new Player(name));
+        inProgress = true;
+        try {
+            setUpPlayers();
+            playRounds();
+            displayFinalResults();
+        } catch (InputClosedException e) {
+            ui.displayAborted();
+        } finally {
+            inProgress = false;
+            ui.close();
         }
-
-        ui.displayGameStart();
-        playRounds();
-        displayFinalResults();
-        ui.close();
     }
 
-    /**
-     * Executes the main game loop.
-     * Continues until all players have completed all 13 combinations.
-     */
+    private void setUpPlayers() {
+        int playerCount = ui.askPlayerCount(MAX_PLAYERS);
+        for (int i = 0; i < playerCount; i++) {
+            players.add(new Player(ui.askPlayerName(i + 1), registry.getAllCombos()));
+        }
+        scoring = new ScoringService(registry, ui.askUseExtraRules());
+        ui.displayGameStart(players, scoring.isExtraRules());
+    }
+
+    /** One round per score-sheet category; every player takes one turn per round. */
     private void playRounds() {
-        while (!allFinished()) {
+        int rounds = registry.size();
+        for (int round = 1; round <= rounds; round++) {
             for (Player player : players) {
-                if (player.getRolledComboCount() < 13) {
-                    playOneTurn(player);
+                if (!player.isFinished()) {
+                    playOneTurn(player, round, rounds);
                 }
             }
         }
     }
 
     /**
-     * Checks if all players have completed their games.
-     *
-     * @return true if all players have rolled all 13 combinations, false otherwise
+     * One turn: up to three rolls, then the player fills one category.
+     * Also applies the upper bonus and (with extra rules) the Yahtzee bonus.
      */
-    private boolean allFinished() {
-        for (Player player : players) {
-            if (player.getRolledComboCount() < 13) {
-                return false;
-            }
+    private void playOneTurn(Player player, int round, int rounds) {
+        ui.displayPlayerTurn(player, round, rounds);
+
+        boolean[] kept = new boolean[DICE_COUNT];
+        rollAndShow(player, kept);
+        for (int rollsLeft = ROLLS_PER_TURN - 1; rollsLeft > 0 && ui.askRollAgain(rollsLeft); rollsLeft--) {
+            kept = ui.askKeptDice(DICE_COUNT);
+            rollAndShow(player, kept);
         }
-        return true;
-    }
 
-    /**
-     * Manages one complete turn for a player.
-     * Allows up to 3 dice rolls, displays options after each roll, and saves the chosen combination.
-     * Also checks and awards the 35-point upper section bonus if applicable.
-     *
-     * @param player the player taking this turn
-     */
-    private void playOneTurn(Player player) {
-        int[] kept = new int[5];
-
-        int playerNumber = players.indexOf(player) + 1;
-        ui.displayPlayerTurn(playerNumber, player);
-
-        rollAndDisplay(kept, player);
         List<Integer> values = collectValues();
-        ui.displayPossibleCombos(registry.getAllCombos(), values, player.getUsedCombosSnapshot());
-
-        int rollCount = 1;
-        while (rollCount < 3 && ui.askRollAgain()) {
-            kept = ui.askKeptDice();
-            rollAndDisplay(kept, player);
-            values = collectValues();
-            ui.displayPossibleCombos(registry.getAllCombos(), values, player.getUsedCombosSnapshot());
-            rollCount++;
+        boolean hadBonus = player.isUpperSectionBonusAwarded();
+        if (scoring.earnsYahtzeeBonus(player, values)) {
+            player.addYahtzeeBonus();
+            ui.displayYahtzeeBonus(Player.YAHTZEE_BONUS_POINTS);
         }
 
-        int chosenIndex = requestCombinationIndex(player);
-        saveScore(player, chosenIndex, values);
-        awardBonusIfEligible(player);
-        ui.displayScoreUpdate(playerNumber, player);
+        int index = requestCombinationIndex(player, values);
+        Combination chosen = registry.getComboByIndex(index);
+        int points = scoring.pointsFor(player, index, values);
+        player.applyScore(chosen, points);
+
+        if (!hadBonus && player.isUpperSectionBonusAwarded()) {
+            ui.displayBonusMessage(Player.UPPER_BONUS_POINTS);
+        }
+        ui.displayScoreUpdate(player, chosen.getComboName(), points);
     }
 
-    private void rollAndDisplay(int[] kept, Player player) {
+    private void rollAndShow(Player player, boolean[] kept) {
         player.rollDice(dice, kept);
         Collections.sort(dice);
+        List<Integer> values = collectValues();
         ui.displayDice(dice);
+        ui.displayScoreSheet(player, scoring.options(player, values), scoring.isJoker(player, values));
     }
 
-    /**
-     * Collects current values from all dice into a list.
-     *
-     * @return list of current dice values
-     */
     private List<Integer> collectValues() {
         List<Integer> values = new ArrayList<>(dice.size());
         for (Die die : dice) {
@@ -139,46 +151,28 @@ public class GameManager {
         return values;
     }
 
-    private int requestCombinationIndex(Player player) {
-        int index = ui.askCombination();
-        while (!isValidCombinationChoice(index, player)) {
-            ui.displayInvalidCombinationSelection();
-            index = ui.askCombination();
-        }
-        return index;
-    }
-
-    private boolean isValidCombinationChoice(int index, Player player) {
-        return index >= 0 && index < registry.getAllCombos().size() && !player.isCombinationUsed(index);
-    }
-
-    /**
-     * Saves a player's chosen combination and updates their score.
-     *
-     * @param player the player whose score is being saved
-     * @param index the index of the chosen combination
-     * @param values the current dice values
-     */
-    private void saveScore(Player player, int index, List<Integer> values) {
-        Combination chosen = registry.getComboByIndex(index);
-        int points = chosen.calculatePoints(values);
-        player.applyScore(chosen, points, registry.isUpperSection(index));
-    }
-
-    private void awardBonusIfEligible(Player player) {
-        if (!player.isUpperSectionBonusAwarded() && player.getUpperSectionScore() >= 63) {
-            ui.displayBonusMessage();
-            player.setTotalScore(player.getTotalScore() + 35);
-            player.setUpperSectionBonusAwarded(true);
+    /** Asks until the player picks a category they may use (confirming a 0-point scratch). */
+    private int requestCombinationIndex(Player player, List<Integer> values) {
+        while (true) {
+            int index = ui.askCombination(registry.size());
+            String name = registry.getComboByIndex(index).getComboName();
+            if (player.isCombinationUsed(index)) {
+                ui.displayInvalidCombinationSelection(name + " is already filled. Pick an open category.");
+            } else if (!scoring.isAllowed(player, index, values)) {
+                ui.displayInvalidCombinationSelection(
+                        "Joker rule: this Yahtzee must go in a category that shows points.");
+            } else if (scoring.pointsFor(player, index, values) == 0 && !ui.confirmScratch(name)) {
+                // player changed their mind; ask again
+            } else {
+                return index;
+            }
         }
     }
 
-    /**
-     * Displays final game results.
-     * Sorts players by score in descending order and displays rankings.
-     */
+    /** Sorts players by score (highest first) and shows the results. */
     private void displayFinalResults() {
-        players.sort(Collections.reverseOrder());
-        ui.displayGameEnd(players);
+        List<Player> ranking = new ArrayList<>(players);
+        ranking.sort(Collections.reverseOrder());
+        ui.displayGameEnd(ranking);
     }
 }

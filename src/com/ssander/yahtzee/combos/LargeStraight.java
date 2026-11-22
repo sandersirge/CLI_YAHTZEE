@@ -51,4 +51,15 @@ public class LargeStraight extends Combination {
                 uniqueValues.contains(4) && uniqueValues.contains(5) && 
                 uniqueValues.contains(6));
     }
+
+    /**
+     * Under the Joker rule a Yahtzee scores the full 40 points here.
+     *
+     * @param values the dice values
+     * @return 40
+     */
+    @Override
+    public int jokerPoints(List<Integer> values) {
+        return 40;
+    }
 }

@@ -33,8 +33,12 @@ The codebase now follows a modular package structure within the namespace `com.s
 - **Robust Validation**: Frequency maps and set logic avoid positional assumptions, ensuring correctness for three/four of a kind, straights, full house, and Yahtzee checks.
 - **English Translation**: All classes, prompts, and documentation use English terminology.
 - **Dedicated UI Layer**: Console interactions are isolated behind a `GameUI` contract, enabling future UI changes without touching game logic.
-- **Enhanced UX**: Dice output uses friendly labels (e.g., `1. die - value: 5`), bonus awards are announced, and score updates are shown after each turn.
-- **Graceful Shutdown**: Pressing `Ctrl+C` cleanly terminates the game with an “Game aborted. Closing now…” message.
+- **Score Sheet**: After every roll you see all 13 categories: what is already scored, what this roll would score in each open one, your upper-section progress towards the bonus (`41/63 - 22 more for +35`), bonuses and the total.
+- **Official Extra Rules (optional)**: At the start you choose whether to play with the **Yahtzee bonus** (+100 for every extra Yahtzee while the Yahtzee box holds 50) and the **Joker rule** (a later Yahtzee must fill its matching upper box if open; otherwise it counts as a full Full House, Small or Large Straight). The rules live in `ScoringService`.
+- **Forgiving Input**: Every prompt re-asks instead of crashing on a typo. Answers accept `y`/`yes`/`n`/`no` in any case; dice to keep can be typed as `1 3 5`, `1,3,5` or `135`, `all` keeps everything and Enter rerolls all. An empty name becomes "Player N".
+- **No Accidental Zeros**: Choosing a category that would score 0 asks for confirmation first.
+- **Clear Results**: Turns show the player's name and round (`Round 4/13 - Alice's turn`). The end screen names the winner, reports ties, and lists places (tied players share a place) with upper, bonus, lower and total points.
+- **Graceful Shutdown**: `Ctrl+C` during a game prints "Game aborted. Closing now…"; a finished game exits quietly, and if input ends (e.g. piped input runs out) the game closes cleanly.
 - **Documentation**: Comprehensive Javadoc coverage describes responsibilities, parameters, and return values across the codebase.
 
 ---
@@ -75,14 +79,14 @@ The codebase now follows a modular package structure within the namespace `com.s
    java -cp out com.ssander.yahtzee.Game
    ```
 
-3. Follow the console prompts to enter the number of players (1–3), roll dice, choose combinations, and track scores.
+3. Follow the console prompts: number of players (1–6), names, whether to use the extra rules, then roll, keep dice and pick a category each turn.
 
 ---
 
 ## Possible Future Enhancements
 
 - **Automated Testing**: Introduce JUnit tests for combination validation and scoring logic.
-- **Configuration Options**: Allow variable player counts, dice numbers, or rule variants (e.g., Joker rules).
+- **More Rule Variants**: Further house rules beyond the optional Yahtzee bonus and Joker rule.
 - **Persistent Scores**: Store game history (e.g., JSON/CSV) for leaderboards or resume functionality.
 - **Graphical Interface**: Replace console UI with Swing/JavaFX or a web-based front end.
 - **Internationalization**: Reintroduce Estonian strings through resource bundles to support multiple languages.

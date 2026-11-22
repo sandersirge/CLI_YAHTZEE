@@ -47,4 +47,19 @@ public class Numbers extends Combination {
     public boolean isPossible(List<Integer> values) {
         return values.contains(targetNumber);
     }
+
+    /**
+     * Gets the face value this category counts (1 for Ones ... 6 for Sixes).
+     *
+     * @return the target face value
+     */
+    public int getTargetNumber() {
+        return targetNumber;
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public boolean isUpperSection() {
+        return true;
+    }
 }

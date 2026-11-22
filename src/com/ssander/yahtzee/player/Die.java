@@ -1,6 +1,7 @@
 package com.ssander.yahtzee.player;
 
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.random.RandomGenerator;
 
 /**
  * Represents a single six-sided die in the Yahtzee game.
@@ -8,6 +9,7 @@ import java.util.concurrent.ThreadLocalRandom;
  * Implements Rollable for rolling behavior and Comparable for sorting.
  */
 public class Die implements Rollable, Comparable<Die> {
+    private final RandomGenerator random;
     private int currentValue;
 
     /**
@@ -15,6 +17,17 @@ public class Die implements Rollable, Comparable<Die> {
      * The die must be rolled to generate a valid value.
      */
     public Die() {
+        this(ThreadLocalRandom.current());
+    }
+
+    /**
+     * Constructs a die that rolls with the given random source
+     * (a seeded generator gives repeatable rolls, e.g. for testing).
+     *
+     * @param random random source used by {@link #roll()}
+     */
+    public Die(RandomGenerator random) {
+        this.random = random;
         this.currentValue = 0;
     }
 
@@ -43,7 +56,7 @@ public class Die implements Rollable, Comparable<Die> {
      */
     @Override
     public void roll() {
-        this.setCurrentValue(ThreadLocalRandom.current().nextInt(1, 7));
+        this.setCurrentValue(random.nextInt(1, 7));
     }
 
     /**

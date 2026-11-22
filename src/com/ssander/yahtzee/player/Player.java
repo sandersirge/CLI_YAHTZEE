@@ -1,222 +1,163 @@
 package com.ssander.yahtzee.player;
 
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 import com.ssander.yahtzee.combos.Combination;
 
 /**
- * Represents a player in the Yahtzee game.
- * Tracks player score, used combinations, and game statistics.
- * Players are comparable based on their total score.
+ * A player and their score sheet.
  *
- * <p>Responsibility for updating combination usage and section totals now
- * lives inside this class via {@link #applyScore(Combination, int, boolean)},
- * reducing direct score mutations from the game manager.</p>
+ * <p>The sheet stores one score per category ({@code null} while still open).
+ * Totals are always calculated from the sheet plus the two bonuses, so they can
+ * never drift out of sync with what is shown.</p>
  */
 public class Player implements Comparable<Player> {
-    private String playerName;
-    private int totalScore;
-    private final boolean[] usedCombos;
-    private int upperSectionScore;
-    private int lowerSectionScore;
-    private boolean upperSectionBonusAwarded;
-    private final List<String> rolledComboNames;
-    private final List<Integer> rolledComboScores;
+    /** Upper-section total needed for the bonus. */
+    public static final int UPPER_BONUS_THRESHOLD = 63;
+    /** Bonus for reaching the threshold. */
+    public static final int UPPER_BONUS_POINTS = 35;
+    /** Bonus for each extra Yahtzee (official rule, optional in this game). */
+    public static final int YAHTZEE_BONUS_POINTS = 100;
+
+    private final String playerName;
+    private final Integer[] scores;
+    private final boolean[] upperCategory;
+    private int yahtzeeBonusCount;
 
     /**
-     * Constructs a new player with the given name.
-     * Initializes score to 0 and creates empty combination tracking lists.
+     * Creates a player with an empty score sheet.
      *
-     * @param name the player's name
+     * @param name display name
+     * @param categories all categories in score-sheet order (defines sheet size and sections)
      */
-    public Player(String name) {
+    public Player(String name, List<Combination> categories) {
         this.playerName = name;
-        this.totalScore = 0;
-        this.rolledComboNames = new ArrayList<>();
-        this.rolledComboScores = new ArrayList<>();
-        this.usedCombos = new boolean[13];
-        this.upperSectionScore = 0;
-        this.lowerSectionScore = 0;
-        this.upperSectionBonusAwarded = false;
+        this.scores = new Integer[categories.size()];
+        this.upperCategory = new boolean[categories.size()];
+        for (Combination combo : categories) {
+            upperCategory[combo.getIndex()] = combo.isUpperSection();
+        }
     }
 
-    /**
-     * Gets the player's name.
-     *
-     * @return the player name
-     */
     public String getPlayerName() {
         return playerName;
     }
 
     /**
-     * Sets the player's name.
+     * Records the points for a category.
      *
-     * @param playerName the new player name
+     * @param combination the category being filled
+     * @param points points scored (0 for a scratch)
+     * @throws IllegalStateException if the category is already filled
      */
-    public void setPlayerName(String playerName) {
-        this.playerName = playerName;
-    }
-
-    /**
-     * Gets the player's total score including bonuses.
-     *
-     * @return the total score
-     */
-    public int getTotalScore() {
-        return totalScore;
-    }
-
-    /**
-     * Sets the player's total score.
-     * Primarily used for awarding bonus points.
-     *
-     * @param totalScore the new total score
-     */
-    public void setTotalScore(int totalScore) {
-        this.totalScore = totalScore;
-    }
-
-    /**
-     * Applies the result of scoring a combination to this player.
-     * Handles marking the combination as used, tracking history,
-     * and updating section totals.
-     *
-     * @param combination the combination that was scored
-     * @param points the points earned for this combination
-     * @param upperSection true if the combination belongs to the upper section
-     * @throws IllegalStateException if the combination was already used
-     */
-    public void applyScore(Combination combination, int points, boolean upperSection) {
+    public void applyScore(Combination combination, int points) {
         int index = combination.getIndex();
-        if (usedCombos[index]) {
+        if (scores[index] != null) {
             throw new IllegalStateException("Combination already used: " + combination.getComboName());
         }
+        scores[index] = points;
+    }
 
-        usedCombos[index] = true;
-        rolledComboNames.add(combination.getComboName());
-        rolledComboScores.add(points);
+    /** Adds one Yahtzee bonus (+100). */
+    public void addYahtzeeBonus() {
+        yahtzeeBonusCount++;
+    }
 
-        totalScore += points;
-        if (upperSection) {
-            upperSectionScore += points;
-        } else {
-            lowerSectionScore += points;
-        }
+    public int getYahtzeeBonusCount() {
+        return yahtzeeBonusCount;
+    }
+
+    public int getYahtzeeBonusPoints() {
+        return yahtzeeBonusCount * YAHTZEE_BONUS_POINTS;
     }
 
     /**
-     * Gets the number of combinations the player has rolled.
+     * Score in a category, or {@code null} if it is still open.
      *
-     * @return the count of rolled combinations
+     * @param index category index
+     * @return points scored, or null
      */
-    public int getRolledComboCount() {
-        return rolledComboNames.size();
+    public Integer getScore(int index) {
+        return scores[index];
     }
 
-    /**
-     * Provides a defensive copy of combination usage flags for presentation.
-     *
-     * @return a copy of the used combination flags
-     */
-    public boolean[] getUsedCombosSnapshot() {
-        return Arrays.copyOf(usedCombos, usedCombos.length);
-    }
-
-    /**
-     * Indicates whether a combination has already been scored.
-     *
-     * @param index the combination index to check
-     * @return true if the combination was scored before
-     */
     public boolean isCombinationUsed(int index) {
-        return usedCombos[index];
+        return scores[index] != null;
     }
 
-    /**
-     * Checks if the upper section bonus has been awarded.
-     *
-     * @return true if bonus has been awarded, false otherwise
-     */
-    public boolean isUpperSectionBonusAwarded() {
-        return upperSectionBonusAwarded;
+    /** @return how many categories are filled */
+    public int getRolledComboCount() {
+        int filled = 0;
+        for (Integer score : scores) {
+            if (score != null) {
+                filled++;
+            }
+        }
+        return filled;
     }
 
-    /**
-     * Sets whether the upper section bonus has been awarded.
-     *
-     * @param upperSectionBonusAwarded true if bonus awarded, false otherwise
-     */
-    public void setUpperSectionBonusAwarded(boolean upperSectionBonusAwarded) {
-        this.upperSectionBonusAwarded = upperSectionBonusAwarded;
+    /** @return true when every category is filled */
+    public boolean isFinished() {
+        return getRolledComboCount() == scores.length;
     }
 
-    /**
-     * Gets the upper section score (sum of Ones through Sixes).
-     *
-     * @return the upper section score
-     */
+    /** @return total of Ones to Sixes (without the bonus) */
     public int getUpperSectionScore() {
-        return upperSectionScore;
+        return sectionScore(true);
     }
 
-    /**
-     * Gets the lower section score (sum of all combination scores).
-     *
-     * @return the lower section score
-     */
+    /** @return total of the lower-section categories (without Yahtzee bonuses) */
     public int getLowerSectionScore() {
-        return lowerSectionScore;
+        return sectionScore(false);
+    }
+
+    /** @return true once the upper section reaches {@value #UPPER_BONUS_THRESHOLD} */
+    public boolean isUpperSectionBonusAwarded() {
+        return getUpperSectionScore() >= UPPER_BONUS_THRESHOLD;
+    }
+
+    /** @return 35 if the upper bonus is reached, otherwise 0 */
+    public int getUpperBonusPoints() {
+        return isUpperSectionBonusAwarded() ? UPPER_BONUS_POINTS : 0;
+    }
+
+    /** @return grand total: both sections plus all bonuses */
+    public int getTotalScore() {
+        return getUpperSectionScore() + getUpperBonusPoints() + getLowerSectionScore()
+                + getYahtzeeBonusPoints();
     }
 
     /**
-     * Rolls all dice that are not marked as kept.
+     * Rerolls every die that is not kept.
      *
-     * @param dice the list of dice to potentially roll
-     * @param kept array where 0 means roll the die, 1 means keep it
+     * @param dice the dice, in display order
+     * @param kept kept[i] is true when die i must not be rerolled
      */
-    public void rollDice(List<Die> dice, int[] kept) {
-        int counter = 0;
-        for (Die die : dice) {
-            if (kept[counter++] == 0) die.roll();
+    public void rollDice(List<Die> dice, boolean[] kept) {
+        for (int i = 0; i < dice.size(); i++) {
+            if (!kept[i]) {
+                dice.get(i).roll();
+            }
         }
     }
 
-    /**
-     * Creates a formatted string displaying all rolled combinations and their scores.
-     *
-     * @return formatted string of all rolled combinations
-     */
-    public String displayCombos() {
-        StringBuilder result = new StringBuilder();
-        for (int i = 0; i < rolledComboNames.size(); i++) {
-            result.append("\n").append(rolledComboNames.get(i)).append(" - earned points: ").append(rolledComboScores.get(i));
+    private int sectionScore(boolean upper) {
+        int sum = 0;
+        for (int i = 0; i < scores.length; i++) {
+            if (scores[i] != null && upperCategory[i] == upper) {
+                sum += scores[i];
+            }
         }
-        return result + "\n";
+        return sum;
     }
 
-    /**
-     * Returns a string representation of the player including name, score, and all rolled combinations.
-     *
-     * @return formatted player information
-     */
     @Override
     public String toString() {
-        return "PLAYER NAME: " + playerName + "\n" +
-               "SCORE: [ " + totalScore + " ]\n" +
-               "ROLLED COMBOS:" + displayCombos();
+        return playerName + " (" + getTotalScore() + ")";
     }
 
-    /**
-     * Compares this player to another based on total score.
-     *
-     * @param p the other player to compare to
-     * @return negative if this player has lower score, positive if higher, 0 if equal
-     */
     @Override
-    public int compareTo(Player p) {
-        return Integer.compare(this.getTotalScore(), p.getTotalScore());
+    public int compareTo(Player other) {
+        return Integer.compare(getTotalScore(), other.getTotalScore());
     }
 }
