@@ -1,0 +1,61 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+group = 'com.ssander'
+version = '1.1.0'
+
+repositories {
+    mavenCentral()
+}
+
+ext {
+    junitVersion = '6.0.3'
+}
+
+java {
+    // Builds with any newer JDK, but the bytecode targets Java 21.
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 21
+    options.compilerArgs += ['-Xlint:all', '-Werror']
+}
+
+application {
+    mainClass = 'com.ssander.yahtzee.Game'
+}
+
+// `gradlew run` plays in the terminal, so connect the keyboard to the game.
+tasks.named('run') {
+    standardInput = System.in
+}
+
+dependencies {
+    testImplementation(platform("org.junit:junit-bom:${junitVersion}"))
+    testImplementation('org.junit.jupiter:junit-jupiter')
+    testRuntimeOnly('org.junit.platform:junit-platform-launcher')
+}
+
+test {
+    useJUnitPlatform()
+    testLogging {
+        events 'failed'
+        exceptionFormat 'full'
+    }
+}
+
+javadoc {
+    options.encoding = 'UTF-8'
+}
+
+// A runnable jar: `java -jar build/libs/cli-yahtzee-<version>.jar`
+jar {
+    manifest {
+        attributes 'Main-Class': application.mainClass
+    }
+}

@@ -88,6 +88,7 @@ public class GameManager {
             players.add(new Player(ui.askPlayerName(i + 1), registry.getAllCombos()));
         }
         scoring = new ScoringService(registry, ui.askUseExtraRules());
+        ui.askDisplayOptions();
         ui.displayGameStart(players, scoring.isExtraRules());
     }
 

@@ -32,16 +32,41 @@ public class ConsoleUserInterface implements GameUI {
 
     private final BufferedReader input;
     private final PrintStream out;
+    /** Chosen dice view; null means "ask at the start". */
+    private DiceRenderer.Style diceStyle;
+    private List<Integer> lastDice = List.of();
 
-    /** Console UI on standard input/output. */
+    /** Console UI on standard input/output; asks for the dice view at the start. */
     public ConsoleUserInterface() {
-        this(System.in, System.out);
+        this(System.in, System.out, null);
+    }
+
+    /** Console UI on standard input/output with a preset dice view (null = ask). */
+    public ConsoleUserInterface(DiceRenderer.Style diceStyle) {
+        this(System.in, System.out, diceStyle);
     }
 
     /** Console UI on the given streams (used for scripted runs and tests). */
     public ConsoleUserInterface(InputStream in, PrintStream out) {
+        this(in, out, null);
+    }
+
+    /**
+     * Console UI on the given streams with a preset dice view.
+     *
+     * @param in input stream
+     * @param out output stream
+     * @param diceStyle dice view, or null to ask the player
+     */
+    public ConsoleUserInterface(InputStream in, PrintStream out, DiceRenderer.Style diceStyle) {
         this.input = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
         this.out = out;
+        this.diceStyle = diceStyle;
+    }
+
+    /** @return the dice view currently in use (null until chosen) */
+    public DiceRenderer.Style getDiceStyle() {
+        return diceStyle;
     }
 
     // Input helpers -----------------------------------------------------------
@@ -103,6 +128,26 @@ public class ConsoleUserInterface implements GameUI {
     }
 
     @Override
+    public void askDisplayOptions() {
+        if (diceStyle != null) {
+            return;
+        }
+        out.println();
+        out.println("How should dice be shown?");
+        out.println("  1) Die faces   +-------+");
+        out.println("                 | o   o |   (drawn dice)");
+        out.println("                 +-------+");
+        out.println("  2) Compact     [3]  [5]  [6]  (one line)");
+        while (diceStyle == null) {
+            diceStyle = DiceRenderer.Style.parse(readLine("Dice view (1/2): "));
+            if (diceStyle == null) {
+                out.println("Please enter 1 for die faces or 2 for compact.");
+            }
+        }
+        out.println("Tip: type v at \"Roll again?\" to switch the dice view.");
+    }
+
+    @Override
     public boolean askUseExtraRules() {
         out.println();
         out.println("Extra rules: +100 for every extra Yahtzee, and the Joker rule");
@@ -131,15 +176,16 @@ public class ConsoleUserInterface implements GameUI {
 
     @Override
     public void displayDice(List<Die> dice) {
-        StringBuilder numbers = new StringBuilder("  Die: ");
-        StringBuilder faces = new StringBuilder("  Roll:");
-        for (int i = 0; i < dice.size(); i++) {
-            numbers.append(String.format("  %d  ", i + 1));
-            faces.append(String.format(" [%d] ", dice.get(i).getCurrentValue()));
-        }
+        lastDice = dice.stream().map(Die::getCurrentValue).toList();
+        printDice();
+    }
+
+    private void printDice() {
         out.println();
-        out.println(numbers.toString().stripTrailing());
-        out.println(faces.toString().stripTrailing());
+        DiceRenderer.Style style = diceStyle != null ? diceStyle : DiceRenderer.Style.COMPACT;
+        for (String line : DiceRenderer.render(lastDice, style)) {
+            out.println(line);
+        }
     }
 
     @Override
@@ -187,7 +233,25 @@ public class ConsoleUserInterface implements GameUI {
 
     @Override
     public boolean askRollAgain(int rollsLeft) {
-        return readYesNo("Roll again? (" + rollsLeft + (rollsLeft == 1 ? " roll" : " rolls") + " left, y/n): ");
+        String prompt = "Roll again? (" + rollsLeft + (rollsLeft == 1 ? " roll" : " rolls")
+                + " left, y/n, v = switch dice view): ";
+        while (true) {
+            String answer = readLine(prompt).toLowerCase(Locale.ROOT);
+            if (YES.contains(answer)) {
+                return true;
+            }
+            if (NO.contains(answer)) {
+                return false;
+            }
+            if (answer.equals("v")) {
+                diceStyle = diceStyle == DiceRenderer.Style.FACES
+                        ? DiceRenderer.Style.COMPACT
+                        : DiceRenderer.Style.FACES;
+                printDice();
+                continue;
+            }
+            out.println("Please answer y (yes), n (no) or v (switch dice view).");
+        }
     }
 
     @Override

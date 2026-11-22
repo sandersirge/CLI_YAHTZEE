@@ -23,6 +23,10 @@ public interface GameUI {
     /** @return true to play with the Yahtzee bonus and Joker rule */
     boolean askUseExtraRules();
 
+    /** Lets the player pick display preferences (e.g. how dice are drawn); optional. */
+    default void askDisplayOptions() {
+    }
+
     void displayGameStart(List<Player> players, boolean extraRules);
 
     void displayPlayerTurn(Player player, int round, int totalRounds);

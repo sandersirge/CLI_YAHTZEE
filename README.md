@@ -38,8 +38,19 @@ The codebase now follows a modular package structure within the namespace `com.s
 - **Forgiving Input**: Every prompt re-asks instead of crashing on a typo. Answers accept `y`/`yes`/`n`/`no` in any case; dice to keep can be typed as `1 3 5`, `1,3,5` or `135`, `all` keeps everything and Enter rerolls all. An empty name becomes "Player N".
 - **No Accidental Zeros**: Choosing a category that would score 0 asks for confirmation first.
 - **Clear Results**: Turns show the player's name and round (`Round 4/13 - Alice's turn`). The end screen names the winner, reports ties, and lists places (tied players share a place) with upper, bonus, lower and total points.
+- **Dice View**: Choose between drawn die faces and a compact one-line row at the start, with `--faces` / `--compact`, or switch any time by typing `v` at the "Roll again?" prompt.
 - **Graceful Shutdown**: `Ctrl+C` during a game prints "Game aborted. Closing now…"; a finished game exits quietly, and if input ends (e.g. piped input runs out) the game closes cleanly.
+- **Repeatable Games**: `GameManager` and `Die` accept a random source; a seeded one replays the exact same game (used by the tests).
 - **Documentation**: Comprehensive Javadoc coverage describes responsibilities, parameters, and return values across the codebase.
+
+```text
+  +-------+  +-------+  +-------+  +-------+  +-------+
+  | o     |  | o     |  | o     |  | o   o |  | o   o |
+  |       |  |       |  |   o   |  |   o   |  |   o   |
+  |     o |  |     o |  |     o |  | o   o |  | o   o |
+  +-------+  +-------+  +-------+  +-------+  +-------+
+     (1)        (2)        (3)        (4)        (5)
+```
 
 ---
 
@@ -47,45 +58,55 @@ The codebase now follows a modular package structure within the namespace `com.s
 
 ### Prerequisites
 
-- Java Development Kit (JDK) 21 or newer installed and available on your `PATH`.
+- Java Development Kit (JDK) 21 or newer. Gradle itself is downloaded by the included wrapper
+  (Gradle 9.9.2, which also runs on the newest JDKs).
+
+### Command line
+
+```powershell
+cd CLI_YAHTZEE
+.\gradlew run -q --console=plain     # play in the terminal (./gradlew on macOS/Linux)
+.\gradlew test                       # run the JUnit tests
+.\gradlew build                      # compile, test and build build/libs/cli-yahtzee-1.1.0.jar
+java -jar build/libs/cli-yahtzee-1.1.0.jar --faces   # or --compact, --help
+```
+
+Follow the prompts: number of players (1–6), names, whether to use the extra rules and how to show the dice; then each turn roll, keep dice and pick a category.
 
 ### IntelliJ IDEA
 
-1. Launch IntelliJ IDEA and choose **Open**.
-2. Point to the project root (`PROJEKT_YAHTZEE`). IntelliJ detects the `src` folder automatically.
-3. If prompted, mark `src` as a **Sources Root** (the base package is `com.ssander.yahtzee`).
-4. Press `Ctrl+Shift+F9` (Build Project) or use the **Build** menu to compile.
-5. Run the application via the green gutter icon next to the `main` method or through a Run Configuration (Main class: `com.ssander.yahtzee.Game`).
+Choose **Open** and select the project folder (or its `build.gradle`). IntelliJ imports it as a Gradle project; run `Game.main` from the gutter icon, or the Gradle `run` / `test` tasks.
 
 ### Visual Studio Code
 
-1. Install the **Extension Pack for Java** (or at minimum the Language Support for Java extension).
-2. Open the project folder in VS Code.
-3. When prompted, trust the authors and allow VS Code to configure the Java workspace.
-4. Use the **Run and Debug** sidebar, select `com.ssander.yahtzee.Game` as the main class, and click **Run**. VS Code will compile classes into the auto-generated `bin` folder.
+With the **Extension Pack for Java** installed, open the folder; the Gradle project is detected automatically. Run `com.ssander.yahtzee.Game` from **Run and Debug**.
 
-### Command Line (PowerShell)
+---
 
-1. From the project root, compile the sources into an output directory:
+## Project Layout & Quality
 
-   ```powershell
-   cd CLI_YAHTZEE
-   javac -d out (Get-ChildItem -Path src -Recurse -Filter *.java).FullName
-   ```
+```text
+CLI_YAHTZEE/
+├── build.gradle, settings.gradle, gradlew(.bat), gradle/wrapper/   # Gradle build
+├── .github/workflows/ci.yml        # build + tests on Windows, macOS, Linux (JDK 21 and 25)
+├── src/main/java/com/ssander/yahtzee/
+│   ├── Game.java                   # entry point, --faces / --compact / --help
+│   ├── cli/                        # ConsoleUserInterface, DiceRenderer
+│   ├── combos/                     # the 13 scoring rules
+│   ├── management/                 # GameManager, ScoringService, CombinationRegistry
+│   ├── player/                     # Player (score sheet), Die
+│   └── ui/                         # GameUI contract, InputClosedException
+└── src/test/java/com/ssander/yahtzee/   # JUnit 6 tests
+```
 
-2. Start the game using the compiled classes:
-
-   ```powershell
-   java -cp out com.ssander.yahtzee.Game
-   ```
-
-3. Follow the console prompts: number of players (1–6), names, whether to use the extra rules, then roll, keep dice and pick a category each turn.
+- **Tests**: 79 JUnit tests cover every scoring rule, the Joker and bonus rules, player totals, input parsing and re-asking, dice drawing, the end screen, and complete seeded games played by a scripted player.
+- **Warnings are errors**: the build compiles with `-Xlint:all -Werror` and targets Java 21 bytecode.
+- **CI**: every push and pull request runs the build and tests on Windows, macOS and Linux.
 
 ---
 
 ## Possible Future Enhancements
 
-- **Automated Testing**: Introduce JUnit tests for combination validation and scoring logic.
 - **More Rule Variants**: Further house rules beyond the optional Yahtzee bonus and Joker rule.
 - **Persistent Scores**: Store game history (e.g., JSON/CSV) for leaderboards or resume functionality.
 - **Graphical Interface**: Replace console UI with Swing/JavaFX or a web-based front end.
